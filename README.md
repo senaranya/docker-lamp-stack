@@ -20,7 +20,7 @@ redis client
 # How to use:
 #### For basic php applications:
 ```bash
-docker 
+docker run --rm senaranya/php-mysql-apache:latest php -v
 ```
 A sample docker-compose file:
 ```yaml
