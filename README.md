@@ -3,7 +3,7 @@
 
 # Details:
 ### This image contains following:
-PHP with extensions: pcov, mbstring, curl, pdo_mysql, intl
+PHP 8.2 with extensions: pcov, mbstring, curl, pdo_mysql, intl
 
 Apache with modules: ssl, rewrite
   
@@ -24,6 +24,24 @@ docker run --rm senaranya/php-mysql-apache:latest php -v
 ```
 A sample docker-compose file:
 ```yaml
+// TODO
+```
+Sample Dockerfile to build on this image:
+```
+FROM senaranya/php-mysql-apache:latest
+
+## Install package 'unzip'
+RUN apt-get update && apt-get install unzip -y \
+    && rm -rf /var/lib/apt/lists/*
+
+## Install imap extension...
+RUN apt-get update && apt-get install -y \
+  libc-client-dev \
+  libkrb5-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN PHP_OPENSSL=yes docker-php-ext-configure imap --with-kerberos --with-imap-ssl && \
+     docker-php-ext-install -j$(nproc) imap  
 ```
 A sample GitLab ci/cd config
 ```yaml
@@ -99,3 +117,4 @@ test:
 ```
 
 #### For applications that need additional packages:
+// TODO
