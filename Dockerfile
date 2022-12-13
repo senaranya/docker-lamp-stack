@@ -9,14 +9,12 @@
 # Require: Docker (http://www.docker.io/)
 # -----------------------------------------------------------------------------
 
-FROM php:8.0-apache-buster
+FROM php:8.2-apache-bullseye
 
 LABEL name="php-ci-base" \
-      version="1.0"  \
       maintainer="senaranya"
 
-RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y \
+RUN apt-get update && apt-get install --no-install-recommends -y \
     default-mysql-client \
     redis-server \
     libcurl4-gnutls-dev \
@@ -39,11 +37,11 @@ RUN apt-get install -y \
 RUN echo exit 0 > /usr/sbin/policy-rc.d
 
 # Install Nodejs, npm & Yarn
-RUN curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
-RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
-RUN apt update
-RUN apt-get install -y nodejs yarn
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
+RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+RUN apt update && apt-get install --no-install-recommends -y nodejs yarn \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install phpredis
 RUN pecl install -o -f redis \
@@ -52,7 +50,7 @@ RUN pecl install -o -f redis \
 
 # Install php extensions
 ## pcov (for code coverage reports)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install --no-install-recommends -y \
     autoconf \
     g++ \
     make \
@@ -97,15 +95,14 @@ RUN echo "www-data ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 ENV DEBIAN_FRONTEND noninteractive
 # Set the locale, to help Python and the user's applications deal with files that have non-ASCII characters
-RUN apt-get update && apt-get install -y \
-        locales
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        locales \
+        && rm -rf /var/lib/apt/lists/*
 
 # Other useful tools
-RUN apt-get update && apt-get install -y \
-        vim \
-        net-tools \
+RUN apt-get update && apt-get install --no-install-recommends -y \
         redis-tools \
-        iputils-ping
+        && rm -rf /var/lib/apt/lists/*
 
 RUN locale-gen en_US.UTF-8
 RUN dpkg-reconfigure locales
@@ -114,8 +111,12 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
-RUN apt-get install -y gcc make curl debconf curl libcurl4-openssl-dev
-RUN apt-get install -y git
+RUN apt-get install --no-install-recommends -y \
+    gcc make debconf curl libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get install --no-install-recommends -y git \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get autoremove -y
 RUN apt-get clean
