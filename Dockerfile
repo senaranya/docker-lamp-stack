@@ -9,7 +9,7 @@
 # Require: Docker (http://www.docker.io/)
 # -----------------------------------------------------------------------------
 
-FROM php:8.2-apache-bullseye
+FROM php:8.3-apache-bookworm
 
 LABEL name="php-ci-base" \
       maintainer="senaranya"
@@ -81,7 +81,7 @@ RUN file=/etc/apache2/envvars && \
 
 # Install dockerize. Needed to make php container wait for services it depends on until they become available.
 # Using wget instead of ADD command to utilize docker cache
-ENV DOCKERIZE_VERSION v0.6.1
+ENV DOCKERIZE_VERSION=v0.6.1
 RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
     && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
     && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
@@ -93,7 +93,7 @@ RUN touch /var/log/cron.log
 RUN sed -ie 's/%sudo   ALL=(ALL:ALL) ALL/%sudo	ALL=(ALL:ALL) NOPASSWD:ALL/g' /etc/sudoers
 RUN echo "www-data ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 # Set the locale, to help Python and the user's applications deal with files that have non-ASCII characters
 RUN apt-get update && apt-get install --no-install-recommends -y \
         locales \
@@ -107,9 +107,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 RUN locale-gen en_US.UTF-8
 RUN dpkg-reconfigure locales
 RUN localedef -i en_US -f UTF-8 en_US.UTF-8
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
     gcc make debconf curl libcurl4-openssl-dev \
