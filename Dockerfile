@@ -9,21 +9,22 @@
 # Require: Docker (http://www.docker.io/)
 # -----------------------------------------------------------------------------
 
-FROM php:8.3-apache-bookworm
+FROM php:8.3-apache-bookworm AS build
 
 LABEL name="php-ci-base" \
       maintainer="senaranya"
 
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
 RUN apt-get update && apt-get install --no-install-recommends -y \
-    default-mysql-client \
-    redis-server \
+    redis-tools \
     libcurl4-gnutls-dev \
     libicu-dev \
-    libmcrypt-dev \
-    libxpm-dev \
     libxml2-dev \
     libbz2-dev \
-    libzip-dev \
     libpq-dev \
     libaspell-dev \
     libpcre3-dev \
@@ -31,92 +32,73 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     curl \
     wget \
     sudo \
-    && rm -rf /var/lib/apt/lists/*
-
-# Without this, redis doesn't start!
-RUN echo exit 0 > /usr/sbin/policy-rc.d
-
-# Install Nodejs, npm & Yarn
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
-RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
-RUN apt-get update && apt-get install --no-install-recommends -y nodejs yarn \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install phpredis
-RUN pecl install -o -f redis \
-&&  rm -rf /tmp/pear \
-&&  docker-php-ext-enable redis
-
-# Install php extensions
-## pcov (for code coverage reports)
-RUN apt-get update && apt-get install --no-install-recommends -y \
+    git \
     autoconf \
     g++ \
     make \
-    && pecl install -f pcov \
+    gcc \
+    debconf \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN  docker-php-ext-enable pcov
+# The configure is meant for UploadedFile::fake()->image('<something>.jpg'..
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    zlib1g-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) gd
 
-RUN  docker-php-ext-install mbstring
-RUN  docker-php-ext-install pdo_mysql
-RUN  docker-php-ext-install intl
-RUN  docker-php-ext-install zip
-RUN  docker-php-ext-install bz2
-RUN  docker-php-ext-install bcmath
-RUN  docker-php-ext-install pcntl
+RUN docker-php-ext-install opcache sockets mbstring pdo_mysql intl bz2 bcmath pcntl && \
+    pecl install redis pcov && docker-php-ext-enable redis pcov
 
-# Install Composer
-RUN  curl -sS https://getcomposer.org/installer | php
-RUN mv composer.phar /usr/local/bin/composer
-
-# Apache configuration
-RUN a2enmod rewrite ssl
-
-# Make sure www-data works with umask as 002, else the directories/files created will not be readable/writable to itself
-RUN file=/etc/apache2/envvars && \
-    grep -q '^umask' $file && \
-    sed -i 's/^umask.*/umask 002/' $file || echo 'umask 002' >> $file
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer
 
 # Install dockerize. Needed to make php container wait for services it depends on until they become available.
-# Using wget instead of ADD command to utilize docker cache
-ENV DOCKERIZE_VERSION=v0.6.1
-RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
-    && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
-    && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+ENV DOCKERIZE_VERSION=v0.9.2
+RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && \
+    tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && \
+    rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
 
 # Create the log file to be able to run tail
 RUN touch /var/log/cron.log
 
 # Allow www-data and sudo members to run commands as sudo without password
-RUN sed -ie 's/%sudo   ALL=(ALL:ALL) ALL/%sudo	ALL=(ALL:ALL) NOPASSWD:ALL/g' /etc/sudoers
-RUN echo "www-data ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN sed -ie 's/%sudo   ALL=(ALL:ALL) ALL/%sudo ALL=(ALL:ALL) NOPASSWD:ALL/g' /etc/sudoers
 
-ENV DEBIAN_FRONTEND=noninteractive
-# Set the locale, to help Python and the user's applications deal with files that have non-ASCII characters
+RUN a2enmod rewrite ssl && \
+    echo "www-data ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    # Make sure www-data works with umask as 002, else the directories/files created will not be readable/writable to itself
+    sed -i '/^umask/ c\umask 002' /etc/apache2/envvars || echo 'umask 002' >> /etc/apache2/envvars
+
+# FINAL STAGE (runtime only)
+FROM php:8.3-apache-bookworm
+
+# These extensions need runtime library to be available
 RUN apt-get update && apt-get install --no-install-recommends -y \
-        locales \
-        && rm -rf /var/lib/apt/lists/*
-
-# Other useful tools
-RUN apt-get update && apt-get install --no-install-recommends -y \
-        redis-tools \
-        && rm -rf /var/lib/apt/lists/*
-
-RUN locale-gen en_US.UTF-8
-RUN dpkg-reconfigure locales
-RUN localedef -i en_US -f UTF-8 en_US.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
+    libzip-dev zlib1g-dev \
+    libmagickwand-dev libmagickcore-dev imagemagick && \
+    docker-php-ext-install zip && \
+    pecl install imagick && docker-php-ext-enable imagick && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
-    gcc make debconf curl libcurl4-openssl-dev \
+    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install --no-install-recommends -y git \
+COPY --from=build /var/www/html /var/www/html
+COPY --from=build /usr/local/bin/composer /usr/local/bin/composer
+COPY --from=build /usr/local/bin/dockerize /usr/local/bin/dockerize
+COPY --from=build /usr/local/lib/php/ /usr/local/lib/php/
+COPY --from=build /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+# Without this, redis doesn't start...
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    locales \ 
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen en_US.UTF-8 \
+    && dpkg-reconfigure locales \
+    && localedef -i en_US -f UTF-8 en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get autoremove -y
-RUN apt-get clean
+RUN a2enmod rewrite ssl && \
+    echo "www-data ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
